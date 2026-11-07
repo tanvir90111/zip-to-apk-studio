@@ -12,10 +12,10 @@ bucket_name = "zip-to-apk"
 
 [[kv_namespaces]]
 binding = "KV"
-id = "REPLACE_WITH_KV_ID"
+id = "636697d2b151425ab1f1c1912ea40390"
 
 [vars]
-GH_OWNER = "your-github-username"
+GH_OWNER = "tanvir90111"
 GH_REPO = "zip-to-apk-studio"
 GH_REF = "main"
 HOURLY_LIMIT = "5"
