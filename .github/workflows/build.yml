@@ -1,0 +1,52 @@
+name: build-apk
+on:
+  workflow_dispatch:
+    inputs:
+      job_id: { required: true }
+      app_name: { required: true }
+      app_id: { required: true }
+      worker_url: { required: true }
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      JOB_ID: ${{ inputs.job_id }}
+      APP_NAME: ${{ inputs.app_name }}
+      APP_ID: ${{ inputs.app_id }}
+      WORKER_URL: ${{ inputs.worker_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+
+      - name: Fetch uploaded ZIP
+        env:
+          BUILD_TOKEN: ${{ secrets.BUILD_TOKEN }}
+        run: |
+          bash scripts/notify.sh building "Build started"
+          curl -fsS -H "Authorization: Bearer $BUILD_TOKEN" "$WORKER_URL/api/internal/input/$JOB_ID" -o project.zip
+
+      # This step runs untrusted code and has NO secrets in its environment.
+      - name: Build APK
+        run: node scripts/build.mjs project.zip
+
+      - name: Upload APK
+        env:
+          BUILD_TOKEN: ${{ secrets.BUILD_TOKEN }}
+        run: |
+          curl -fsS -X PUT -H "Authorization: Bearer $BUILD_TOKEN" -T out/app.apk "$WORKER_URL/api/internal/apk/$JOB_ID"
+          bash scripts/notify.sh done "APK ready"
+
+      - name: Report failure
+        if: failure()
+        env:
+          BUILD_TOKEN: ${{ secrets.BUILD_TOKEN }}
+        run: bash scripts/notify.sh failed "$(tail -c 450 out/error.txt 2>/dev/null || echo 'Build failed')"
