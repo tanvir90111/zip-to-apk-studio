@@ -65,26 +65,43 @@ async function build(req, env) {
     expirationTtl: 86400,
   });
 
-  const gh = await fetch(
-    `https://api.github.com/repos/${env.GH_OWNER}/${env.GH_REPO}/actions/workflows/build.yml/dispatches`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.GH_TOKEN}`,
-        Accept: "application/vnd.github+json",
-        "User-Agent": "zip-to-apk-studio",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        ref: env.GH_REF || "main",
-        inputs: { job_id: id, app_name: name, app_id: appId, worker_url: new URL(req.url).origin },
-      }),
+  let ghStatus = 0, ghDetail = "";
+  if (!env.GH_TOKEN) ghDetail = "GH_TOKEN secret is not set on the Worker";
+  else {
+    try {
+      const gh = await fetch(
+        `https://api.github.com/repos/${env.GH_OWNER}/${env.GH_REPO}/actions/workflows/build.yml/dispatches`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${env.GH_TOKEN.trim()}`,
+            Accept: "application/vnd.github+json",
+            "User-Agent": "zip-to-apk-studio",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            ref: env.GH_REF || "main",
+            inputs: { job_id: id, app_name: name, app_id: appId, worker_url: new URL(req.url).origin },
+          }),
+        }
+      );
+      ghStatus = gh.status;
+      if (!gh.ok) ghDetail = (await gh.text()).slice(0, 160);
+    } catch (e) {
+      ghDetail = "Could not reach GitHub";
     }
-  );
-  if (!gh.ok) {
-    await setStatus(env, id, "failed", "Could not start the builder");
-    return json({ error: "Could not start the builder" }, 502);
+  }
+  if (ghDetail) {
+    const hints = {
+      401: "token is invalid or expired",
+      403: "token lacks Actions: Read and write permission",
+      404: "token cannot access the repo, or GH_OWNER/GH_REPO is wrong",
+      422: "workflow or branch problem (check build.yml and GH_REF)",
+    };
+    const msg = `Could not start the builder (GitHub ${ghStatus || "-"}: ${hints[ghStatus] || "unknown"}) ${ghDetail}`;
+    await setStatus(env, id, "failed", msg);
+    return json({ error: msg }, 502);
   }
   return json({ id });
 }

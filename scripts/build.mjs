@@ -72,6 +72,11 @@ function gradleBuild(dir) {
   fs.copyFileSync(apks[0].f, path.join(out, "app.apk"));
 }
 
+const t = spawnSync("unzip", ["-Zt", path.resolve(zip)], { encoding: "utf8" });
+const mm = /(\d+) files?, (\d+) bytes uncompressed/.exec(t.stdout || "");
+if (!mm) fail("Could not read the ZIP file");
+if (+mm[1] > 12000 || +mm[2] > 500 * 1048576) fail("ZIP is too large when unpacked (max 12000 files / 500 MB)");
+
 run("unzip", ["-q", "-o", path.resolve(zip), "-d", "src"]);
 const root = findRoot(path.join(work, "src"));
 
